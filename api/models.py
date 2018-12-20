@@ -1,5 +1,6 @@
 from django.db import models
 from django.core.exceptions import ValidationError
+import hashlib
 
 # Create your models here.
 
@@ -17,12 +18,17 @@ class App(models.Model):
     giturl = models.CharField(max_length=64)
     type = models.CharField(max_length=16)
     build = models.CharField(max_length=16)
-    cover = models.BooleanField()
-    monitor = models.BooleanField()
-    group = models.ForeignKey(AppGrp, blank=True, null=True, on_delete=models.SET_NULL)
+    cover = models.BooleanField(default=False)
+    monitor = models.BooleanField(default=False)
+    group = models.ForeignKey(AppGrp, null=True, on_delete=models.SET_NULL)
 
     def __str__(self):
         return self.name
+
+    @property
+    def group_name(self):
+        return self.group.name
+
 
 
 class User(models.Model):
@@ -32,3 +38,7 @@ class User(models.Model):
 
     def __str__(self):
         return self.name
+
+    def save(self, *args, **kwargs):
+        self.password = hashlib.md5((self.password + self.name).encode('utf-8')).hexdigest().upper()
+        super(User, self).save(*args, **kwargs)
