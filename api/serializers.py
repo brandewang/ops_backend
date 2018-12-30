@@ -3,6 +3,7 @@ from api.models import AppGrp, App, User
 
 
 class AppGrpSerializer(serializers.ModelSerializer):
+    app_name = serializers.ReadOnlyField()
     class Meta:
         model = AppGrp
         fields = '__all__'

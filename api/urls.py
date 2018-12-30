@@ -12,7 +12,8 @@ router.register(r'appgrp', views.AppGrpViewSet)
 
 urlpatterns = [
     url(r'^', include(router.urls)),
-    url(r'^test', views.test)
+    url(r'^test', views.test),
+    url(r'^gitlab/get_modules', views.gitlab_get_modules)
 ]
 
 # urlpatterns = [
