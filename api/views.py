@@ -6,8 +6,8 @@ from django_filters.rest_framework import DjangoFilterBackend
 from django.http import HttpResponse
 from django.http.response import JsonResponse
 from rest_framework.pagination import PageNumberPagination
-import time, re, urllib3, base64, json
-
+import os, time, re, urllib3, base64, json, subprocess
+from git import *
 
 
 #自定义类
@@ -32,7 +32,58 @@ class GitLabAct(object):
                 return []
         except Exception as e:
             return []
-                # '发生错误: 无法获取Modules' + e.__str__()
+
+#deploy
+class DeployAct(object):
+    def __init__(self, app_seq, app_name, module, gitlab_id, git_url, short_id, branch, env, type):
+        self.base_path = '/Users/brande/PycharmProjects/cookbook_and_code/ops_backend/data/'
+        self.scripts_path = self.base_path + 'scripts/'
+        self.workspace = self.base_path + 'workspace/'
+        self.log_path = self.base_path + 'logs/'
+        self.app_name = app_name
+        self.module = module
+        self.gitlab_id = gitlab_id
+        self.git_url = git_url
+        self.short_id = short_id
+        self.branch = branch
+        self.env = env
+        self.type = type
+        self.tag = module + '-' + branch + '-' + short_id + '-' + str(app_seq + 1)
+        #workspace
+        self.app_workspace = self.workspace + self.app_name
+        #package_path
+        self.package_path = self.base_path + 'package/' + self.app_name + '/' + self.tag + '/'
+        #log_info
+        self.package_log_path = self.log_path + '/package/' + self.app_name + '/'
+        self.package_log = self.package_log_path + self.tag + '.log'
+        #scpits_info
+        self.package_sh = self.scripts_path + 'package.sh'
+
+    def init_repo(self):
+        if not os.path.exists(self.app_workspace):
+            os.chdir(self.workspace)
+            os.system('/usr/bin/git clone {0}'.format(self.git_url))
+        repo = Repo(self.app_workspace)
+        git = repo.git
+        git.clean('-xdf')
+        git.checkout('-f', 'master')
+        git.pull('--rebase')
+        git.checkout('-f', self.short_id)
+
+
+    def pack_repo(self):
+        os.system('mkdir -p {0};mkdir -p {1}'.format(self.package_path, self.package_log_path))
+        with open(self.package_log, 'w') as log_file:
+            CompletedProcess = subprocess.run(self.package_sh + ' {0} {1} {2} {3} {4} {5}'.format(
+                self.app_name, self.module, self.app_workspace, self.package_path, self.env, self.type)
+                , shell=True, stdout=log_file, stderr=log_file, check=False)
+        print(CompletedProcess)
+        pass
+
+    def release_repo(self):
+        pass
+
+
 
 #自定义视图
 

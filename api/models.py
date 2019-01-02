@@ -31,6 +31,7 @@ class App(models.Model):
     monitor = models.BooleanField(default=False)
     group = models.ForeignKey(AppGrp, null=True, on_delete=models.SET_NULL)
     packing_lock = models.BooleanField(default=False)
+    package_seq = models.IntegerField(default=0)
 
     def __str__(self):
         return self.name
