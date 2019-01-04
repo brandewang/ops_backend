@@ -1,5 +1,5 @@
-from api.models import App, User, AppGrp
-from api.serializers import AppSerializer, UserSerializer, AppGrpSerializer
+from api.models import App, User, AppGrp, Package
+from api.serializers import AppSerializer, UserSerializer, AppGrpSerializer, PackageSerializer
 # from rest_framework import generics
 from rest_framework import viewsets
 from django_filters.rest_framework import DjangoFilterBackend
@@ -8,6 +8,8 @@ from django.http.response import JsonResponse
 from rest_framework.pagination import PageNumberPagination
 import os, time, re, urllib3, base64, json, subprocess
 from git import *
+from dwebsocket import require_websocket
+
 
 
 #自定义类
@@ -33,28 +35,31 @@ class GitLabAct(object):
         except Exception as e:
             return []
 
+
+
 #deploy
 class DeployAct(object):
-    def __init__(self, app_seq, app_name, module, gitlab_id, git_url, short_id, branch, env, type):
+    def __init__(self, app_seq, app_id, app_name, module, git_url, short_id, branch, env, type):
         self.base_path = '/Users/brande/PycharmProjects/cookbook_and_code/ops_backend/data/'
         self.scripts_path = self.base_path + 'scripts/'
         self.workspace = self.base_path + 'workspace/'
         self.log_path = self.base_path + 'logs/'
         self.app_name = app_name
         self.module = module
-        self.gitlab_id = gitlab_id
+        self.app_id = app_id
         self.git_url = git_url
         self.short_id = short_id
         self.branch = branch
         self.env = env
         self.type = type
-        self.tag = module + '-' + branch + '-' + short_id + '-' + str(app_seq + 1)
+        self.package_seq = app_seq
+        self.tag = module + '-' + branch + '-' + short_id + '-' + str(self.package_seq)
         #workspace
         self.app_workspace = self.workspace + self.app_name
         #package_path
         self.package_path = self.base_path + 'package/' + self.app_name + '/' + self.tag + '/'
         #log_info
-        self.package_log_path = self.log_path + '/package/' + self.app_name + '/'
+        self.package_log_path = self.log_path + 'package/' + self.app_name + '/'
         self.package_log = self.package_log_path + self.tag + '.log'
         #scpits_info
         self.package_sh = self.scripts_path + 'package.sh'
@@ -77,8 +82,13 @@ class DeployAct(object):
             CompletedProcess = subprocess.run(self.package_sh + ' {0} {1} {2} {3} {4} {5}'.format(
                 self.app_name, self.module, self.app_workspace, self.package_path, self.env, self.type)
                 , shell=True, stdout=log_file, stderr=log_file, check=False)
-        print(CompletedProcess)
-        pass
+        p = Package.objects.create(tag=self.tag, branch=self.branch, short_id=self.short_id, env=self.env, package_path=self.package_path, log_path=self.package_log, app_id=App.objects.get(id=self.app_id))
+        App.objects.filter(id=self.app_id).update(package_seq=self.package_seq)
+        if CompletedProcess.returncode != 0:
+            p.status = 'failed'
+            p.save()
+            return False
+        return True
 
     def release_repo(self):
         pass
@@ -101,18 +111,55 @@ def gitlab_get_modules(request):
     return HttpResponse('wrong request method', status=400)
 
 
+#deploy
+def deploy_package(request):
+    if request.method == 'POST':
+        # print(request.POST)
+        # return HttpResponse('ok')
+        app_id = int(request.POST.get('app_id'))
+        App.objects.filter(id=app_id).update(packing_lock = 1)
+        app_seq = App.objects.get(id=app_id).package_seq + 1
+        app_name = request.POST.get('app_name')
+        module = request.POST.get('module')
+        git_url = request.POST.get('git_url')
+        short_id = request.POST.get('short_id')
+        branch = request.POST.get('branch')
+        env = request.POST.get('env')
+        type = request.POST.get('type')
+        # print(app_seq, app_id, app_name, module, git_url, short_id, branch, env, type)
+        deploy = DeployAct(app_seq, app_id, app_name, module, git_url, short_id, branch, env, type)
+        deploy.init_repo()
+        result = deploy.pack_repo()
+        result = json.dumps(result)
+        App.objects.filter(id=app_id).update(packing_lock = 0)
+        return HttpResponse(result, content_type="application/json")
+    return HttpResponse('wrong request method', status=400)
+
+
+def deploy_package_delete(request):
+    if request.method == 'POST':
+        # print(request.POST)
+        package_id = int(request.POST.get('package_id'))
+        package = Package.objects.get(id = package_id)
+        package_path = package.package_path
+        log_path = package.log_path
+        os.system('rm -rf {0} {1}'.format(package_path, log_path))
+        package.delete()
+        return HttpResponse('ok', status=200)
+    return HttpResponse('wrong request method', status=400)
+
+
 #自定义分页类
+class DefaultPageNumberPagination(PageNumberPagination):
+    page_size_query_param = 'size'
+    page_query_param = 'page'
+
+
 class AppGrpPageNumberPagination(PageNumberPagination):
     page_size = 5
     # max_page_size = 5
     page_size_query_param = 'size'
     page_query_param = 'page'
-
-class AppPageNumberPagination(PageNumberPagination):
-    # max_page_size = 5
-    page_size_query_param = 'size'
-    page_query_param = 'page'
-
 
 
 #restful api
@@ -127,7 +174,7 @@ class AppGrpViewSet(viewsets.ModelViewSet):
 class AppViewSet(viewsets.ModelViewSet):
     queryset = App.objects.all()
     serializer_class = AppSerializer
-    pagination_class = AppPageNumberPagination
+    pagination_class = DefaultPageNumberPagination
     filter_backends = (DjangoFilterBackend,)
     filter_fields = ('name', 'type', 'group', )
 
@@ -138,6 +185,20 @@ class UserViewSet(viewsets.ModelViewSet):
     filter_backends = (DjangoFilterBackend,)
     filter_fields = ('name', )
 
+
+class PackageViewSet(viewsets.ModelViewSet):
+    queryset = Package.objects.order_by('-create_time')
+    serializer_class = PackageSerializer
+    pagination_class = DefaultPageNumberPagination
+    filter_backends = (DjangoFilterBackend,)
+    filter_fields = ('tag', 'status', 'env', 'app_id')
+
+
+#websocket
+# @require_websocket
+# def echo_once(request):
+#     # message = request.websocket.wait()
+#     request.websocket.send('test')
 
 #测试试图
 

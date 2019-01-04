@@ -8,12 +8,16 @@ router = DefaultRouter()
 router.register(r'app', views.AppViewSet)
 router.register(r'user', views.UserViewSet)
 router.register(r'appgrp', views.AppGrpViewSet)
+router.register(r'package', views.PackageViewSet)
 
 
 urlpatterns = [
     url(r'^', include(router.urls)),
     url(r'^test', views.test),
-    url(r'^gitlab/get_modules', views.gitlab_get_modules)
+    url(r'^gitlab/get_modules', views.gitlab_get_modules),
+    url(r'^deploy/deploy_package/$', views.deploy_package),
+    url(r'^deploy/deploy_package_delete', views.deploy_package_delete),
+    # url(r'^echo_once', views.echo_once),
 ]
 
 # urlpatterns = [

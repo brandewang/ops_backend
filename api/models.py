@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils import timezone
 from django.core.exceptions import ValidationError
 import hashlib
 
@@ -6,7 +7,8 @@ import hashlib
 
 TEAMS = ['FruitDay', 'OMS', 'TMS', 'SAP', 'PMS', 'GW']
 TEAM_CHOICES = sorted((item, item) for item in TEAMS)
-
+STATUS = ['success', 'failed']
+STATUS_CHOICES = sorted((item, item) for item in STATUS)
 
 class AppGrp(models.Model):
     name = models.CharField(max_length=32, unique=True)
@@ -53,3 +55,18 @@ class User(models.Model):
     def save(self, *args, **kwargs):
         self.password = hashlib.md5((self.password + self.name).encode('utf-8')).hexdigest().upper()
         super(User, self).save(*args, **kwargs)
+
+
+class Package(models.Model):
+    tag = models.CharField(max_length=64, unique=True)
+    committer = models.CharField(max_length=32, default='admin')
+    create_time = models.DateTimeField(default=timezone.now)
+    status = models.CharField(choices=STATUS_CHOICES, max_length=16, default='success')
+    branch = models.CharField(max_length=16)
+    short_id = models.CharField(max_length=16)
+    env = models.CharField(max_length=16)
+    package_path = models.CharField(max_length=256)
+    log_path = models.CharField(max_length=256)
+    app_id = models.ForeignKey(App, null=True, on_delete=models.SET_NULL)
+
+
